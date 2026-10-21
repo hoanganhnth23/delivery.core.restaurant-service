@@ -1,0 +1,429 @@
+package com.delivery.restaurant_service.controller;
+
+import com.delivery.auth.resourceserver.security.AuthenticatedActor;
+import com.delivery.restaurant_service.common.constants.HttpHeaderConstants;
+import com.delivery.restaurant_service.common.constants.RoleConstants;
+import com.delivery.restaurant_service.dto.request.CreateRestaurantRequest;
+import com.delivery.restaurant_service.dto.request.UpdateRestaurantRequest;
+import com.delivery.restaurant_service.dto.response.RestaurantResponse;
+import com.delivery.restaurant_service.service.RestaurantService;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.core.MethodParameter;
+import org.springframework.http.MediaType;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.web.bind.support.WebDataBinderFactory;
+import org.springframework.web.context.request.NativeWebRequest;
+import org.springframework.web.method.support.HandlerMethodArgumentResolver;
+import org.springframework.web.method.support.ModelAndViewContainer;
+
+import java.util.Arrays;
+import java.util.List;
+import java.util.Set;
+
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+@ExtendWith(MockitoExtension.class)
+class RestaurantControllerTest {
+
+    @Mock
+    private RestaurantService restaurantService;
+
+    @InjectMocks
+    private RestaurantController restaurantController;
+
+    private MockMvc mockMvc;
+    private ObjectMapper objectMapper;
+
+    @BeforeEach
+    void setUp() {
+        mockMvc = MockMvcBuilders.standaloneSetup(restaurantController)
+                .setCustomArgumentResolvers(new HandlerMethodArgumentResolver() {
+                    @Override
+                    public boolean supportsParameter(MethodParameter parameter) {
+                        return parameter.hasParameterAnnotation(AuthenticationPrincipal.class)
+                                && AuthenticatedActor.class.isAssignableFrom(parameter.getParameterType());
+                    }
+
+                    @Override
+                    public Object resolveArgument(MethodParameter parameter, ModelAndViewContainer mavContainer,
+                                                  NativeWebRequest webRequest, WebDataBinderFactory binderFactory) {
+                        String userIdHeader = webRequest.getHeader(HttpHeaderConstants.X_USER_ID);
+                        String roleHeader = webRequest.getHeader(HttpHeaderConstants.X_ROLE);
+                        if (userIdHeader != null && userIdHeader.matches("\\d+")) {
+                            Long userId = Long.parseLong(userIdHeader);
+                            Set<String> roles = roleHeader != null ? Set.of(roleHeader) : Set.of("USER");
+                            return new AuthenticatedActor(userId, "user@example.com", roles);
+                        }
+                        return null;
+                    }
+                })
+                .build();
+        objectMapper = new ObjectMapper();
+    }
+
+    @Test
+    void create_ShouldReturnCreatedRestaurant_WhenValidRequest() throws Exception {
+        // Given
+        CreateRestaurantRequest request = new CreateRestaurantRequest();
+        request.setName("Pizza Palace");
+        request.setAddress("123 Main Street");
+        request.setPhone("0123456789");
+        request.setAddressLat(10.78);
+        request.setAddressLng(106.69);
+
+        RestaurantResponse response = new RestaurantResponse();
+        response.setId(1L);
+        response.setName("Pizza Palace");
+        response.setAddress("123 Main Street");
+        response.setPhone("0123456789");
+
+        when(restaurantService.createRestaurant(any(CreateRestaurantRequest.class), anyLong(), anyLong(), anyString()))
+                .thenReturn(response);
+
+        // When & Then
+        mockMvc.perform(post("/api/restaurants")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header(HttpHeaderConstants.X_USER_ID, "1")
+                        .header(HttpHeaderConstants.X_ROLE, RoleConstants.OWNER)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value(1))
+                .andExpect(jsonPath("$.data.id").value(1))
+                .andExpect(jsonPath("$.data.name").value("Pizza Palace"))
+                .andExpect(jsonPath("$.data.address").value("123 Main Street"))
+                .andExpect(jsonPath("$.data.phone").value("0123456789"));
+
+        verify(restaurantService).createRestaurant(any(CreateRestaurantRequest.class), eq(1L), eq(1L), eq(RoleConstants.OWNER));
+    }
+
+    @Test
+    void adminCreatePassesActorAndRequestedOwnerToHostAdapter() throws Exception {
+        CreateRestaurantRequest request = new CreateRestaurantRequest();
+        request.setName("Admin Created Restaurant");
+        request.setAddress("123 Main Street");
+        request.setAddressLat(10.78);
+        request.setAddressLng(106.69);
+        request.setOwnerPrincipalId(42L);
+        RestaurantResponse response = new RestaurantResponse();
+        response.setId(2L);
+        when(restaurantService.createRestaurant(any(), eq(1L), eq(1L), eq(RoleConstants.ADMIN)))
+                .thenReturn(response);
+
+        mockMvc.perform(post("/api/restaurants")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header(HttpHeaderConstants.X_USER_ID, "1")
+                        .header(HttpHeaderConstants.X_ROLE, RoleConstants.ADMIN)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk());
+
+        verify(restaurantService).createRestaurant(
+                argThat(input -> Long.valueOf(42L).equals(input.getOwnerPrincipalId())),
+                eq(1L), eq(1L), eq(RoleConstants.ADMIN));
+    }
+
+    @Test
+    void update_ShouldReturnUpdatedRestaurant_WhenValidRequest() throws Exception {
+        // Given
+        Long restaurantId = 1L;
+        UpdateRestaurantRequest request = new UpdateRestaurantRequest();
+        request.setName("Updated Pizza Palace");
+        request.setAddress("456 New Street");
+
+        RestaurantResponse response = new RestaurantResponse();
+        response.setId(restaurantId);
+        response.setName("Updated Pizza Palace");
+        response.setAddress("456 New Street");
+
+        when(restaurantService.updateRestaurant(eq(restaurantId), any(UpdateRestaurantRequest.class), anyLong(), anyLong(),
+                eq(RoleConstants.OWNER)))
+                .thenReturn(response);
+
+        // When & Then
+        mockMvc.perform(put("/api/restaurants/{id}", restaurantId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header(HttpHeaderConstants.X_USER_ID, "1")
+                        .header(HttpHeaderConstants.X_ROLE, RoleConstants.OWNER)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value(1))
+                .andExpect(jsonPath("$.data.id").value(1))
+                .andExpect(jsonPath("$.data.name").value("Updated Pizza Palace"))
+                .andExpect(jsonPath("$.data.address").value("456 New Street"));
+
+        verify(restaurantService).updateRestaurant(eq(restaurantId), any(UpdateRestaurantRequest.class), eq(1L), eq(1L),
+                eq(RoleConstants.OWNER));
+    }
+
+    @Test
+    void delete_ShouldReturnSuccess_WhenValidId() throws Exception {
+        // Given
+        Long restaurantId = 1L;
+        Long userId = 1L;
+
+        // When & Then
+        mockMvc.perform(delete("/api/restaurants/{id}", restaurantId)
+                        .header(HttpHeaderConstants.X_USER_ID, userId.toString())
+                        .header(HttpHeaderConstants.X_ROLE, RoleConstants.OWNER))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value(1))
+                .andExpect(jsonPath("$.data").isEmpty());
+
+        verify(restaurantService).deleteRestaurant(eq(restaurantId), eq(userId), eq(userId), eq(RoleConstants.OWNER));
+    }
+
+    @Test
+    void getById_ShouldReturnRestaurant_WhenValidId() throws Exception {
+        // Given
+        Long restaurantId = 1L;
+        RestaurantResponse response = createRestaurantResponse(restaurantId, "Pizza Palace", "123 Main Street");
+
+        when(restaurantService.getRestaurantById(restaurantId)).thenReturn(response);
+
+        // When & Then
+        mockMvc.perform(get("/api/restaurants/{id}", restaurantId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value(1))
+                .andExpect(jsonPath("$.data.id").value(1))
+                .andExpect(jsonPath("$.data.name").value("Pizza Palace"))
+                .andExpect(jsonPath("$.data.address").value("123 Main Street"));
+
+        verify(restaurantService).getRestaurantById(restaurantId);
+    }
+
+    @Test
+    void getAll_ShouldReturnAllRestaurants() throws Exception {
+        // Given
+        List<RestaurantResponse> restaurants = Arrays.asList(
+                createRestaurantResponse(1L, "Pizza Palace", "123 Main Street"),
+                createRestaurantResponse(2L, "Burger King", "456 Second Street"),
+                createRestaurantResponse(3L, "Sushi Master", "789 Third Street")
+        );
+
+        when(restaurantService.getAllRestaurants()).thenReturn(restaurants);
+
+        // When & Then
+        mockMvc.perform(get("/api/restaurants"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value(1))
+                .andExpect(jsonPath("$.data").isArray())
+                .andExpect(jsonPath("$.data.length()").value(3))
+                .andExpect(jsonPath("$.data[0].id").value(1))
+                .andExpect(jsonPath("$.data[0].name").value("Pizza Palace"))
+                .andExpect(jsonPath("$.data[1].id").value(2))
+                .andExpect(jsonPath("$.data[1].name").value("Burger King"))
+                .andExpect(jsonPath("$.data[2].id").value(3))
+                .andExpect(jsonPath("$.data[2].name").value("Sushi Master"));
+
+        verify(restaurantService).getAllRestaurants();
+    }
+
+    @Test
+    void search_ShouldReturnMatchingRestaurants_WhenValidKeyword() throws Exception {
+        // Given
+        String keyword = "Pizza";
+        List<RestaurantResponse> searchResults = Arrays.asList(
+                createRestaurantResponse(1L, "Pizza Palace", "123 Main Street"),
+                createRestaurantResponse(2L, "Best Pizza", "456 Pizza Street")
+        );
+
+        when(restaurantService.findByName(keyword)).thenReturn(searchResults);
+
+        // When & Then
+        mockMvc.perform(get("/api/restaurants/search").param("keyword", keyword))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value(1))
+                .andExpect(jsonPath("$.data").isArray())
+                .andExpect(jsonPath("$.data.length()").value(2))
+                .andExpect(jsonPath("$.data[0].name").value("Pizza Palace"))
+                .andExpect(jsonPath("$.data[1].name").value("Best Pizza"));
+
+        verify(restaurantService).findByName(keyword);
+    }
+
+    @Test
+    void search_ShouldReturnEmptyList_WhenNoMatches() throws Exception {
+        // Given
+        String keyword = "NonExistent";
+        List<RestaurantResponse> emptyResults = Arrays.asList();
+
+        when(restaurantService.findByName(keyword)).thenReturn(emptyResults);
+
+        // When & Then
+        mockMvc.perform(get("/api/restaurants/search").param("keyword", keyword))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value(1))
+                .andExpect(jsonPath("$.data").isArray())
+                .andExpect(jsonPath("$.data.length()").value(0));
+
+        verify(restaurantService).findByName(keyword);
+    }
+
+    @Test
+    void myRestaurantsRejectsNonOwnerRole() {
+        AuthenticatedActor customerActor = new AuthenticatedActor(7L, "user@example.com", Set.of(RoleConstants.CUSTOMER));
+        assertThatThrownBy(() -> restaurantController.getMyRestaurants(customerActor))
+                .isInstanceOf(AccessDeniedException.class);
+
+        verifyNoInteractions(restaurantService);
+    }
+
+    @Test
+    void adminManagementListIncludesArchivedRestaurants() {
+        AuthenticatedActor adminActor = new AuthenticatedActor(
+                901L, 7L, "admin@example.com", Set.of(RoleConstants.ADMIN));
+        when(restaurantService.getAllManagedRestaurants(901L, 7L)).thenReturn(List.of());
+
+        restaurantController.getMyRestaurants(adminActor);
+
+        verify(restaurantService).getAllManagedRestaurants(901L, 7L);
+        verify(restaurantService, org.mockito.Mockito.never()).getAllRestaurants();
+    }
+
+    @Test
+    void shopOwnerManagementListUsesPrincipalAndLegacyIdentity() {
+        AuthenticatedActor owner = new AuthenticatedActor(
+                101L, 7L, "owner@example.com", Set.of(RoleConstants.OWNER));
+        when(restaurantService.getRestaurantsByOwnerPrincipalId(101L, 7L)).thenReturn(List.of());
+
+        restaurantController.getMyRestaurants(owner);
+
+        verify(restaurantService).getRestaurantsByOwnerPrincipalId(101L, 7L);
+        verify(restaurantService, org.mockito.Mockito.never()).getAllManagedRestaurants(anyLong(), anyLong());
+        verify(restaurantService, org.mockito.Mockito.never()).getAllRestaurants();
+    }
+
+    @Test
+    void pagePreservesPaginationEnvelopeAndSearchParameters() throws Exception {
+        RestaurantResponse restaurant = createRestaurantResponse(8L, "Pizza House", "8 Main Street");
+        when(restaurantService.getAllRestaurantsPage(2, 2, "pizza"))
+                .thenReturn(new PageImpl<>(List.of(restaurant), PageRequest.of(2, 2), 7));
+
+        mockMvc.perform(get("/api/restaurants/page")
+                        .param("page", "2")
+                        .param("size", "2")
+                        .param("keyword", "pizza"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items.length()").value(1))
+                .andExpect(jsonPath("$.data.items[0].id").value(8))
+                .andExpect(jsonPath("$.data.page").value(2))
+                .andExpect(jsonPath("$.data.size").value(2))
+                .andExpect(jsonPath("$.data.totalItems").value(7))
+                .andExpect(jsonPath("$.data.totalPages").value(4))
+                .andExpect(jsonPath("$.data.hasNext").value(true));
+
+        verify(restaurantService).getAllRestaurantsPage(2, 2, "pizza");
+    }
+
+    @Test
+    void create_ShouldReject_WithoutAuthenticatedActor() throws Exception {
+        // Given
+        CreateRestaurantRequest request = new CreateRestaurantRequest();
+        request.setName("Test Restaurant");
+        request.setAddress("Test Address");
+        request.setAddressLat(10.78);
+        request.setAddressLng(106.69);
+
+        // When & Then
+        assertThatThrownBy(() -> restaurantController.create(request, null))
+                .isInstanceOf(AccessDeniedException.class);
+
+        verifyNoInteractions(restaurantService);
+    }
+
+    @Test
+    void update_ShouldReject_WithoutAuthenticatedActor() throws Exception {
+        // Given
+        Long restaurantId = 1L;
+        UpdateRestaurantRequest request = new UpdateRestaurantRequest();
+        request.setName("Updated Name");
+
+        // When & Then
+        assertThatThrownBy(() -> restaurantController.update(restaurantId, request, null))
+                .isInstanceOf(AccessDeniedException.class);
+
+        verifyNoInteractions(restaurantService);
+    }
+
+    @Test
+    void create_InvalidPayloadReturnsBadRequestBeforeOwnerResolution() throws Exception {
+        CreateRestaurantRequest request = new CreateRestaurantRequest();
+        request.setName(" ");
+        request.setAddress("short");
+        request.setAddressLat(1.0);
+        request.setAddressLng(1.0);
+
+        mockMvc.perform(post("/api/restaurants")
+                        .header(HttpHeaderConstants.X_USER_ID, "1")
+                        .header(HttpHeaderConstants.X_ROLE, RoleConstants.OWNER)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(restaurantService);
+    }
+
+    @Test
+    void create_RejectsOnlyOneOperatingHourBeforeOwnerResolution() throws Exception {
+        mockMvc.perform(post("/api/restaurants")
+                        .header(HttpHeaderConstants.X_USER_ID, "1")
+                        .header(HttpHeaderConstants.X_ROLE, RoleConstants.OWNER)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"Valid Restaurant","address":"123 Valid Street",
+                                 "addressLat":10.78,"addressLng":106.69,"openingHour":"18:00:00"}
+                                """))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(restaurantService);
+    }
+
+    @Test
+    void update_InvalidPayloadReturnsBadRequestBeforeServiceCall() throws Exception {
+        UpdateRestaurantRequest request = new UpdateRestaurantRequest();
+        request.setName(" ");
+
+        mockMvc.perform(put("/api/restaurants/{id}", 1L)
+                        .header(HttpHeaderConstants.X_USER_ID, "1")
+                        .header(HttpHeaderConstants.X_ROLE, RoleConstants.OWNER)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(restaurantService);
+    }
+
+    @Test
+    void page_InvalidPaginationReturnsBadRequestBeforeServiceCall() throws Exception {
+        assertThatThrownBy(() -> restaurantController.getPage(-1, 101, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Invalid page or size");
+
+        verifyNoInteractions(restaurantService);
+    }
+
+    private RestaurantResponse createRestaurantResponse(Long id, String name, String address) {
+        RestaurantResponse response = new RestaurantResponse();
+        response.setId(id);
+        response.setName(name);
+        response.setAddress(address);
+        return response;
+    }
+}

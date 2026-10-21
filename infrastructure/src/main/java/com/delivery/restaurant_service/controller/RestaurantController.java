@@ -1,0 +1,134 @@
+package com.delivery.restaurant_service.controller;
+
+import com.delivery.restaurant_service.common.constants.ApiPathConstants;
+import com.delivery.restaurant_service.common.constants.RoleConstants;
+import com.delivery.restaurant_service.dto.request.CreateRestaurantRequest;
+import com.delivery.restaurant_service.dto.request.UpdateRestaurantRequest;
+import com.delivery.restaurant_service.dto.request.RestaurantLifecycleRequest;
+import com.delivery.restaurant_service.dto.response.RestaurantResponse;
+import com.delivery.restaurant_service.payload.BaseResponse;
+import com.delivery.restaurant_service.service.RestaurantService;
+import com.delivery.auth.resourceserver.security.AuthenticatedActor;
+
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.*;
+import jakarta.validation.Valid;
+
+import java.util.List;
+import org.springframework.data.domain.Page;
+import com.delivery.restaurant_service.payload.PageResponse;
+
+@RestController
+@RequestMapping(ApiPathConstants.RESTAURANTS)
+public class RestaurantController {
+
+    private final RestaurantService restaurantService;
+
+    public RestaurantController(RestaurantService restaurantService) {
+        this.restaurantService = restaurantService;
+    }
+
+    @PostMapping
+    public ResponseEntity<BaseResponse<RestaurantResponse>> create(
+            @Valid @RequestBody CreateRestaurantRequest request,
+            @AuthenticationPrincipal AuthenticatedActor actor) {
+        requireActor(actor);
+        RestaurantResponse response = restaurantService.createRestaurant(
+                request, actor.getPrincipalId(), actor.getLegacyUserId(), getRoleString(actor));
+        return ResponseEntity.ok(new BaseResponse<>(1, response));
+    }
+
+    @PutMapping("/{id}")
+    public ResponseEntity<BaseResponse<RestaurantResponse>> update(
+            @PathVariable Long id,
+            @Valid @RequestBody UpdateRestaurantRequest request,
+            @AuthenticationPrincipal AuthenticatedActor actor) {
+        requireActor(actor);
+        RestaurantResponse response = restaurantService.updateRestaurant(
+                id, request, actor.getPrincipalId(), actor.getLegacyUserId(), getRoleString(actor));
+        return ResponseEntity.ok(new BaseResponse<>(1, response));
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<BaseResponse<Void>> delete(
+            @PathVariable Long id,
+            @AuthenticationPrincipal AuthenticatedActor actor) {
+        requireActor(actor);
+        restaurantService.deleteRestaurant(id, actor.getPrincipalId(), actor.getLegacyUserId(), getRoleString(actor));
+        return ResponseEntity.ok(new BaseResponse<>(1, null));
+    }
+
+    @PatchMapping("/{id}/lifecycle")
+    public ResponseEntity<BaseResponse<RestaurantResponse>> changeLifecycle(
+            @PathVariable Long id,
+            @Valid @RequestBody RestaurantLifecycleRequest request,
+            @AuthenticationPrincipal AuthenticatedActor actor) {
+        requireActor(actor);
+        RestaurantResponse response = restaurantService.changeLifecycle(
+                id, request, actor.getPrincipalId(), actor.getLegacyUserId(), getRoleString(actor));
+        return ResponseEntity.ok(new BaseResponse<>(1, response));
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<BaseResponse<RestaurantResponse>> getById(@PathVariable Long id) {
+        RestaurantResponse response = restaurantService.getRestaurantById(id);
+        return ResponseEntity.ok(new BaseResponse<>(1, response));
+    }
+
+    @GetMapping
+    public ResponseEntity<BaseResponse<List<RestaurantResponse>>> getAll() {
+        List<RestaurantResponse> list = restaurantService.getAllRestaurants();
+        return ResponseEntity.ok(new BaseResponse<>(1, list));
+    }
+
+    @GetMapping("/search")
+    public ResponseEntity<BaseResponse<List<RestaurantResponse>>> search(@RequestParam String keyword) {
+        List<RestaurantResponse> list = restaurantService.findByName(keyword);
+        return ResponseEntity.ok(new BaseResponse<>(1, list));
+    }
+
+    @GetMapping("/page")
+    public ResponseEntity<BaseResponse<PageResponse<RestaurantResponse>>> getPage(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "24") int size,
+            @RequestParam(required = false) String keyword) {
+        if (page < 0 || size < 1 || size > 100) throw new IllegalArgumentException("Invalid page or size");
+        return ResponseEntity.ok(new BaseResponse<>(1,
+                PageResponse.from(restaurantService.getAllRestaurantsPage(page, size, keyword))));
+    }
+    
+    @GetMapping("/my-restaurants")
+    public ResponseEntity<BaseResponse<List<RestaurantResponse>>> getMyRestaurants(
+            @AuthenticationPrincipal AuthenticatedActor actor) {
+        
+        if (actor == null || actor.getPrincipalId() == null || actor.getLegacyUserId() == null) {
+            throw new IllegalArgumentException("User ID is required");
+        }
+        if (!actor.isShopOwner() && !actor.isAdmin()) {
+            throw new AccessDeniedException("Only SHOP_OWNER or ADMIN can view owned restaurants");
+        }
+        
+        List<RestaurantResponse> list = actor.isAdmin()
+                ? restaurantService.getAllManagedRestaurants(
+                        actor.getPrincipalId(), actor.getLegacyUserId())
+                : restaurantService.getRestaurantsByOwnerPrincipalId(
+                        actor.getPrincipalId(), actor.getLegacyUserId());
+        return ResponseEntity.ok(new BaseResponse<>(1, list));
+    }
+
+    private void requireActor(AuthenticatedActor actor) {
+        if (actor == null || actor.getPrincipalId() == null || actor.getLegacyUserId() == null) {
+            throw new AccessDeniedException("Yêu cầu đăng nhập");
+        }
+    }
+
+    private String getRoleString(AuthenticatedActor actor) {
+        if (actor == null) return null;
+        if (actor.isAdmin()) return RoleConstants.ADMIN;
+        if (actor.isShopOwner()) return RoleConstants.OWNER;
+        return RoleConstants.CUSTOMER;
+    }
+
+}
