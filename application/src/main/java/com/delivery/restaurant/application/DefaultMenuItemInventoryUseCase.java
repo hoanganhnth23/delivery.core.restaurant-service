@@ -74,7 +74,8 @@ public final class DefaultMenuItemInventoryUseCase implements MenuItemInventoryU
                 }
             }
 
-            LocalDateTime now = LocalDateTime.now(clock);
+            // Microseconds, as stored: an exact replay then returns the same expiresAt.
+            LocalDateTime now = LocalDateTime.now(clock).truncatedTo(java.time.temporal.ChronoUnit.MICROS);
             InventoryReservation reservation = new InventoryReservation(command.reservationId(), command.orderId(),
                     command.userId(), command.userPrincipalId(), command.restaurantId(), InventoryReservation.State.RESERVED,
                     now.plus(reservationTtl), now, now, requested.entrySet().stream()
