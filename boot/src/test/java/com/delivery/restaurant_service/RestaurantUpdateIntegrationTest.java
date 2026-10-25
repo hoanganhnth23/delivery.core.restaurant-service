@@ -145,7 +145,8 @@ class RestaurantUpdateIntegrationTest {
 
     @Test
     void foreignShopOwnerCannotUpdateRestaurant() throws Exception {
-        Restaurant restaurant = restaurants.saveAndFlush(restaurant(101L, 7L));
+        // Compare with the stored row: Postgres keeps microseconds, the in-memory entity may not.
+        Restaurant restaurant = restaurants.findById(restaurants.saveAndFlush(restaurant(101L, 7L)).getId()).orElseThrow();
 
         mvc.perform(put("/api/restaurants/{id}", restaurant.getId())
                         .with(actor(202L, 8L, "SHOP_OWNER"))
@@ -179,7 +180,7 @@ class RestaurantUpdateIntegrationTest {
         restaurant.setAddress("123 Main Street");
         restaurant.setCreatorId(7L);
         restaurant.setOwnerPrincipalId(101L);
-        restaurant = restaurants.saveAndFlush(restaurant);
+        restaurant = restaurants.findById(restaurants.saveAndFlush(restaurant).getId()).orElseThrow();
 
         mvc.perform(put("/api/restaurants/{id}", restaurant.getId())
                         .with(actor(101L, 7L, "SHOP_OWNER"))
