@@ -26,6 +26,8 @@ import com.delivery.restaurant_service.config.RestaurantOwnershipSettings;
 import java.util.List;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
@@ -57,6 +59,7 @@ public class MenuItemServiceImpl implements MenuItemService {
         }
     }
 
+    @CacheEvict(value = {"menu_items_available", "menu_items_available_page"}, allEntries = true)
     @Override
     public MenuItemResponse createMenuItem(CreateMenuItemRequest request, Long principalId,
             Long legacyUserId, String role) {
@@ -73,6 +76,7 @@ public class MenuItemServiceImpl implements MenuItemService {
         }
     }
 
+    @CacheEvict(value = {"menu_items_available", "menu_items_available_page"}, allEntries = true)
     @Override
     public MenuItemResponse updateMenuItem(Long id, UpdateMenuItemRequest request, Long principalId,
             Long legacyUserId, String role) {
@@ -89,6 +93,7 @@ public class MenuItemServiceImpl implements MenuItemService {
         }
     }
 
+    @CacheEvict(value = {"menu_items_available", "menu_items_available_page"}, allEntries = true)
     @Override
     public void deleteMenuItem(Long id, Long principalId, Long legacyUserId, String role) {
         try {
@@ -98,6 +103,7 @@ public class MenuItemServiceImpl implements MenuItemService {
         }
     }
 
+    @CacheEvict(value = {"menu_items_available", "menu_items_available_page"}, allEntries = true)
     @Override
     public MenuItemResponse changeLifecycle(Long id, MenuItemLifecycleRequest request,
             Long principalId, Long legacyUserId, String role) {
@@ -109,6 +115,7 @@ public class MenuItemServiceImpl implements MenuItemService {
         }
     }
 
+    @Cacheable(value = "menu_items_available", key = "#restaurantId")
     @Override
     public List<MenuItemResponse> getAvailableItems(Long restaurantId) {
         return menuItemReadUseCase.listPublic(restaurantId).stream()
@@ -116,6 +123,7 @@ public class MenuItemServiceImpl implements MenuItemService {
                 .collect(Collectors.toList());
     }
 
+    @Cacheable(value = "menu_items_available_page", key = "#restaurantId + '_' + #page + '_' + #size")
     @Override
     public Page<MenuItemResponse> getAvailableItemsPage(Long restaurantId, int page, int size) {
         return menuItemMapper.toPage(menuItemReadUseCase.pagePublic(restaurantId, page, size));

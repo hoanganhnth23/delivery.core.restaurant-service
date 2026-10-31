@@ -29,6 +29,8 @@ import java.util.List;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -49,6 +51,7 @@ public class RestaurantServiceImpl implements RestaurantService {
     private final RestaurantReadUseCase restaurantReadUseCase;
     private final RestaurantManagementReadUseCase restaurantManagementReadUseCase;
 
+    @CacheEvict(value = {"restaurant_detail", "restaurant_list", "restaurant_page"}, allEntries = true)
     @Override
     public RestaurantResponse createRestaurant(CreateRestaurantRequest request,
             Long actorPrincipalId, Long creatorId, String role) {
@@ -59,6 +62,7 @@ public class RestaurantServiceImpl implements RestaurantService {
         return restaurantMapper.toResponse(createRestaurantUseCase.create(command));
     }
 
+    @CacheEvict(value = {"restaurant_detail", "restaurant_list", "restaurant_page"}, allEntries = true)
     @Override
     public RestaurantResponse updateRestaurant(Long id, UpdateRestaurantRequest request,
             Long ownerPrincipalId, Long creatorId, String role) {
@@ -81,6 +85,7 @@ public class RestaurantServiceImpl implements RestaurantService {
         return restaurantMapper.toResponse(result.snapshot());
     }
 
+    @CacheEvict(value = {"restaurant_detail", "restaurant_list", "restaurant_page"}, allEntries = true)
     @Override
     public void deleteRestaurant(Long id, Long ownerPrincipalId, Long creatorId, String role) {
         try {
@@ -90,6 +95,7 @@ public class RestaurantServiceImpl implements RestaurantService {
         }
     }
 
+    @CacheEvict(value = {"restaurant_detail", "restaurant_list", "restaurant_page"}, allEntries = true)
     @Override
     public RestaurantResponse changeLifecycle(Long id, RestaurantLifecycleRequest request,
             Long ownerPrincipalId, Long creatorId, String role) {
@@ -101,6 +107,7 @@ public class RestaurantServiceImpl implements RestaurantService {
         }
     }
 
+    @Cacheable(value = "restaurant_detail", key = "#id")
     @Override
     public RestaurantResponse getRestaurantById(Long id) {
         RestaurantSnapshot snapshot = restaurantReadUseCase.findById(id)
@@ -108,6 +115,7 @@ public class RestaurantServiceImpl implements RestaurantService {
         return restaurantMapper.toResponse(snapshot);
     }
 
+    @Cacheable(value = "restaurant_list")
     @Override
     public List<RestaurantResponse> getAllRestaurants() {
         return restaurantReadUseCase.listPublic().stream()
@@ -149,6 +157,7 @@ public class RestaurantServiceImpl implements RestaurantService {
         return mapManagementResult(result);
     }
 
+    @Cacheable(value = "restaurant_page", key = "#page + '_' + #size + '_' + (#keyword != null ? #keyword : '')")
     @Override
     public Page<RestaurantResponse> getAllRestaurantsPage(int page, int size, String keyword) {
         RestaurantPageSlice source = restaurantReadUseCase.pagePublic(page, size, keyword);
