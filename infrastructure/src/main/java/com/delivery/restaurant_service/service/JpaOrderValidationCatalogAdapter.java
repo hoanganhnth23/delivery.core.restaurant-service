@@ -5,7 +5,6 @@ import com.delivery.restaurant_service.repository.MenuItemRepository;
 import com.delivery.restaurant_service.repository.RestaurantRepository;
 import java.util.List;
 import java.util.Optional;
-import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -16,11 +15,9 @@ public class JpaOrderValidationCatalogAdapter implements OrderValidationCatalogP
         this.restaurants = restaurants;
         this.items = items;
     }
-    @Cacheable(value = "restaurant_snapshot", key = "#id")
     @Override public Optional<RestaurantSnapshot> findRestaurant(Long id) {
         return restaurants.findById(id).map(JpaRestaurantReadAdapter::snapshot);
     }
-    @Cacheable(value = "order_validation_items", key = "#ids.toString()")
     @Override public List<MenuItemSnapshot> findItems(List<Long> ids) {
         return items.findAllById(ids).stream().map(JpaMenuItemCreationAdapter::snapshot).toList();
     }

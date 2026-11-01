@@ -59,7 +59,7 @@ public class MenuItemServiceImpl implements MenuItemService {
         }
     }
 
-    @CacheEvict(value = {"menu_items_available", "menu_items_available_page", "order_validation_items"}, allEntries = true)
+    @CacheEvict(value = {"menu_items_available", "menu_items_available_page"}, allEntries = true)
     @Override
     public MenuItemResponse createMenuItem(CreateMenuItemRequest request, Long principalId,
             Long legacyUserId, String role) {
@@ -76,7 +76,7 @@ public class MenuItemServiceImpl implements MenuItemService {
         }
     }
 
-    @CacheEvict(value = {"menu_items_available", "menu_items_available_page", "order_validation_items"}, allEntries = true)
+    @CacheEvict(value = {"menu_items_available", "menu_items_available_page"}, allEntries = true)
     @Override
     public MenuItemResponse updateMenuItem(Long id, UpdateMenuItemRequest request, Long principalId,
             Long legacyUserId, String role) {
@@ -93,7 +93,7 @@ public class MenuItemServiceImpl implements MenuItemService {
         }
     }
 
-    @CacheEvict(value = {"menu_items_available", "menu_items_available_page", "order_validation_items"}, allEntries = true)
+    @CacheEvict(value = {"menu_items_available", "menu_items_available_page"}, allEntries = true)
     @Override
     public void deleteMenuItem(Long id, Long principalId, Long legacyUserId, String role) {
         try {
@@ -103,7 +103,7 @@ public class MenuItemServiceImpl implements MenuItemService {
         }
     }
 
-    @CacheEvict(value = {"menu_items_available", "menu_items_available_page", "order_validation_items"}, allEntries = true)
+    @CacheEvict(value = {"menu_items_available", "menu_items_available_page"}, allEntries = true)
     @Override
     public MenuItemResponse changeLifecycle(Long id, MenuItemLifecycleRequest request,
             Long principalId, Long legacyUserId, String role) {

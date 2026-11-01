@@ -51,7 +51,7 @@ public class RestaurantServiceImpl implements RestaurantService {
     private final RestaurantReadUseCase restaurantReadUseCase;
     private final RestaurantManagementReadUseCase restaurantManagementReadUseCase;
 
-    @CacheEvict(value = {"restaurant_detail", "restaurant_list", "restaurant_page", "restaurant_search", "restaurant_snapshot"}, allEntries = true)
+    @CacheEvict(value = {"restaurant_detail", "restaurant_list", "restaurant_page", "restaurant_search"}, allEntries = true)
     @Override
     public RestaurantResponse createRestaurant(CreateRestaurantRequest request,
             Long actorPrincipalId, Long creatorId, String role) {
@@ -62,7 +62,7 @@ public class RestaurantServiceImpl implements RestaurantService {
         return restaurantMapper.toResponse(createRestaurantUseCase.create(command));
     }
 
-    @CacheEvict(value = {"restaurant_detail", "restaurant_list", "restaurant_page", "restaurant_search", "restaurant_snapshot"}, allEntries = true)
+    @CacheEvict(value = {"restaurant_detail", "restaurant_list", "restaurant_page", "restaurant_search"}, allEntries = true)
     @Override
     public RestaurantResponse updateRestaurant(Long id, UpdateRestaurantRequest request,
             Long ownerPrincipalId, Long creatorId, String role) {
@@ -85,7 +85,7 @@ public class RestaurantServiceImpl implements RestaurantService {
         return restaurantMapper.toResponse(result.snapshot());
     }
 
-    @CacheEvict(value = {"restaurant_detail", "restaurant_list", "restaurant_page", "restaurant_search", "restaurant_snapshot"}, allEntries = true)
+    @CacheEvict(value = {"restaurant_detail", "restaurant_list", "restaurant_page", "restaurant_search"}, allEntries = true)
     @Override
     public void deleteRestaurant(Long id, Long ownerPrincipalId, Long creatorId, String role) {
         try {
@@ -95,7 +95,7 @@ public class RestaurantServiceImpl implements RestaurantService {
         }
     }
 
-    @CacheEvict(value = {"restaurant_detail", "restaurant_list", "restaurant_page", "restaurant_search", "restaurant_snapshot"}, allEntries = true)
+    @CacheEvict(value = {"restaurant_detail", "restaurant_list", "restaurant_page", "restaurant_search"}, allEntries = true)
     @Override
     public RestaurantResponse changeLifecycle(Long id, RestaurantLifecycleRequest request,
             Long ownerPrincipalId, Long creatorId, String role) {
